@@ -1,9 +1,5 @@
 package com.nespresso.heating;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.Calendar;
 
 /**
@@ -11,39 +7,52 @@ import java.util.Calendar;
  * compares it with a given threshold and controls a remote heating
  * unit by switching it on and off. It does so only within a time
  * period configured on a remote service (or other source)
- * 
+ * <p>
  * This is purpose-built crap
  *
+ * The ScheduleManager now is only specialized in the scheduling task.
+ * Retrieving external information or managing the heating system is done by other classes,
+ * specialized in their respective field.
  */
 public class ScheduleManager {
-	
-	public static void manage(HeatingManagerImpl hM, String threshold) throws Exception {
-		String t = stringFromURL("http://probe.home:9990/temp", 4);
-		if(Calendar.getInstance().get(Calendar.HOUR_OF_DAY) > startHour() && Calendar.getInstance().get(Calendar.HOUR_OF_DAY) < endHour()) {
-			hM.manageHeating(t, threshold, true);
-		} 
-		if(Calendar.getInstance().get(Calendar.HOUR_OF_DAY) < startHour() || Calendar.getInstance().get(Calendar.HOUR_OF_DAY) > endHour()) {
-			hM.manageHeating(t, threshold, false);
-		}
-	}
+    private final ExternalInformationRetriever externalInformationRetriever;
+    private final HeatingManager heatingManager;
 
-	private static int endHour() throws NumberFormatException, MalformedURLException, IOException {
-		return new Integer(stringFromURL("http://timer.home:9990/end", 2));
-	}
+    public ScheduleManager(
+            ExternalInformationRetriever externalInformationRetriever,
+            HeatingManager heatingManager
+    ) {
+        this.externalInformationRetriever = externalInformationRetriever;
+        this.heatingManager = heatingManager;
+    }
 
-	private static String stringFromURL(String urlString, int s) throws MalformedURLException,
-			IOException {
-		URL url = new URL(urlString);
-		InputStream is = url.openStream();
-		byte[] tempBuffer = new byte[s];
-		is.read(tempBuffer);
-		String t = new String(tempBuffer);
-		is.close();
-		return t;
-	}
+    /**
+     * Launch the scheduler.
+     * It will update periodically the heating system.
+     */
+    public void launchScheduler() {
+        try {
+            while(true) {
+                Thread.sleep(1000);
+                updateHeatingInformation();
+            }
+        } catch (Exception e) {
+            System.err.println("Error from the scheduler!");
+        }
+    }
 
-	private static int startHour() throws NumberFormatException, MalformedURLException, IOException {
-		return new Integer(stringFromURL("http://timer.home:9990/start", 2));
-	}
+    /**
+     * Update information for the heating system.
+     */
+    private void updateHeatingInformation() {
+        boolean canSystemBeWorking = Calendar.getInstance().get(Calendar.HOUR_OF_DAY) > externalInformationRetriever.getStartHour()
+                && Calendar.getInstance().get(Calendar.HOUR_OF_DAY) < externalInformationRetriever.getEndHour();
 
+        int currentTemp = externalInformationRetriever.getTemperature();
+
+        /*
+         * The previous condition was useless, so it was removed.
+         */
+        heatingManager.sendHeatingInformation(currentTemp, canSystemBeWorking);
+    }
 }
